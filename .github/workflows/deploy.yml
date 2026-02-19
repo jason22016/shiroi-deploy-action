@@ -100,7 +100,11 @@ jobs:
         run: pnpm install
       - name: Build project
         run: |
-          sh ./ci-release-build.sh
+          pnpm run build
+          cd apps/web
+          sh ./standalone-bundle.sh
+          cp -r assets/release.zip ../../assets/release.zip
+
 
       # - uses: actions/upload-artifact@v4
       #   with:
