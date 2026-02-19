@@ -103,6 +103,7 @@ jobs:
           pnpm run build
           cd apps/web
           sh ./standalone-bundle.sh
+          mkdir -p ../../assets
           cp -r assets/release.zip ../../assets/release.zip
 
 
