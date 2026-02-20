@@ -97,7 +97,7 @@ jobs:
           cache: 'pnpm'
       - uses: jongwooo/next-cache@v1
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
       - name: Build project
         run: |
           pnpm run build
