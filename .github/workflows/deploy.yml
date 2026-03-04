@@ -104,7 +104,8 @@ jobs:
       # 新添加的代码结束
       - name: Build project
         run: |
-          pnpm run build
+          # pnpm run build
+          pnpm exec turbo build --filter='!@haklex/rich-editor-demo'
           cd apps/web
           sh ./standalone-bundle.sh
           mkdir -p ../../assets
