@@ -120,6 +120,12 @@ jobs:
           ls -la .next/standalone/.next/ || echo ".next inside standalone not found"
           echo "=== .next/static ==="
           ls -la .next/static/ || echo "static not found"
+          echo "=== .next/standalone/apps ==="
+          ls -la .next/standalone/apps/ || echo "not found"
+          echo "=== .next/standalone/apps/web ==="
+          ls -la .next/standalone/apps/web/ || echo "not found"
+          echo "=== .next/standalone/apps/web/.next ==="
+          ls -la .next/standalone/apps/web/.next/ || echo "not found"
       # 原来的代码：sh ./ci-release-build.sh
 
 
