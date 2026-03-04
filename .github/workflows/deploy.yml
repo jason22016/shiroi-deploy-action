@@ -105,11 +105,21 @@ jobs:
       - name: Build project
         run: |
           # pnpm run build
+          # pnpm exec turbo build --filter='!@haklex/rich-editor-demo'
+          # cd apps/web
+          # sh ./standalone-bundle.sh
+          # mkdir -p ../../assets
+          # cp -r assets/release.zip ../../assets/release.zip
           pnpm exec turbo build --filter='!@haklex/rich-editor-demo'
           cd apps/web
-          sh ./standalone-bundle.sh
-          mkdir -p ../../assets
-          cp -r assets/release.zip ../../assets/release.zip
+          echo "=== .next directory ==="
+          ls -la .next/
+          echo "=== .next/standalone ==="
+          ls -la .next/standalone/ || echo "standalone not found"
+          echo "=== .next/standalone/.next ==="
+          ls -la .next/standalone/.next/ || echo ".next inside standalone not found"
+          echo "=== .next/static ==="
+          ls -la .next/static/ || echo "static not found"
       # 原来的代码：sh ./ci-release-build.sh
 
 
