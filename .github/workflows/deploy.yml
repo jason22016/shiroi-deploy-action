@@ -98,6 +98,10 @@ jobs:
       - uses: jongwooo/next-cache@v1
       - name: Install dependencies
         run: pnpm install
+      # 新添加的代码
+      - name: Install tailwindcss CLI globally
+        run: npm install -g tailwindcss@4.2.1
+      # 新添加的代码结束
       - name: Build project
         run: |
           pnpm run build
@@ -105,6 +109,7 @@ jobs:
           sh ./standalone-bundle.sh
           mkdir -p ../../assets
           cp -r assets/release.zip ../../assets/release.zip
+      # 原来的代码：sh ./ci-release-build.sh
 
 
       # - uses: actions/upload-artifact@v4
