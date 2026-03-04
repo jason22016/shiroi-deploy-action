@@ -99,8 +99,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       # 新添加的代码
-      - name: Add tailwindcss to shiro-types
-        run: pnpm --filter shiro-types add -D tailwindcss@4.2.1
+      - name: Add tailwindcss CLI to shiro-types
+        run: pnpm --filter shiro-types add -D @tailwindcss/cli@4.2.1
       # 新添加的代码结束
       - name: Build project
         run: |
