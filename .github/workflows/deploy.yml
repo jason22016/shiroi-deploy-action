@@ -99,8 +99,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       # 新添加的代码
-      - name: Install tailwindcss CLI globally
-        run: npm install -g tailwindcss@4.2.1
+      - name: Make tailwindcss CLI available globally
+        run: sudo ln -s $(realpath apps/web/node_modules/.bin/tailwindcss) /usr/local/bin/tailwindcss
       # 新添加的代码结束
       - name: Build project
         run: |
