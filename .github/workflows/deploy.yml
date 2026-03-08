@@ -110,7 +110,7 @@ jobs:
           # sh ./standalone-bundle.sh
           # mkdir -p ../../assets
           # cp -r assets/release.zip ../../assets/release.zip
-          pnpm exec turbo build --filter='!@haklex/rich-editor-demo'
+          pnpm exec turbo build
           cd apps/web/.next
           rm -rf cache
           cp -r ../public ./standalone/apps/web/public
