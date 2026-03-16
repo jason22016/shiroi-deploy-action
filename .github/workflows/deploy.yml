@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: innei-dev/shiroi
-          ref: '16ec4b6d65f90f657c3fde86ca8ebacfe16e73ab' # to back to old version ---- NEW LINE!
+          ref: 'b6ae34a224e24c92ffc740f12fd22ef34fda8a24' # to back to old version ---- NEW LINE!
           token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
           fetch-depth: 0
           lfs: true
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: innei-dev/shiroi
-          ref: '16ec4b6d65f90f657c3fde86ca8ebacfe16e73ab' # NEW LINE!! back to old version
+          ref: 'b6ae34a224e24c92ffc740f12fd22ef34fda8a24' # NEW LINE!! back to old version
           token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
           fetch-depth: 0
           lfs: true
