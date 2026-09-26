@@ -1,0 +1,38 @@
+name: Verify private-update rollback backup
+on:
+  push:
+    branches: [codex/private-deployment]
+    paths: ['.github/workflows/private-update-preflight.yml', 'deployment/preflight.sh', 'deployment/rollback.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: site-production
+  cancel-in-progress: false
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Upload backup and recovery scripts
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          source: deployment/preflight.sh,deployment/rollback.sh,deployment/content-fingerprint.js
+          target: /tmp/private-update-preflight-${{ github.run_id }}
+          strip_components: 1
+      - name: Save and verify the original state without installing new code
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          command_timeout: 15m
+          script: bash /tmp/private-update-preflight-${{ github.run_id }}/preflight.sh '${{ github.run_id }}'

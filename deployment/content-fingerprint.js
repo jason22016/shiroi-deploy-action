@@ -1,6 +1,6 @@
 // Read-only. Only the SHA256 of this output leaves the server-side pipeline.
 // Live read/like counters are omitted; no collection is written or restored.
-const names = ['posts', 'notes', 'pages', 'categories', 'topics', 'comments', 'links', 'says', 'snippets', 'recentlies']
+const names = ['posts', 'notes', 'pages', 'categories', 'topics', 'comments', 'links', 'says', 'snippets', 'recentlies', 'options']
 const databases = db.adminCommand({ listDatabases: 1, nameOnly: true }).databases
   .map((entry) => entry.name).filter((name) => !['admin', 'config', 'local'].includes(name)).sort()
 for (const name of databases) {
