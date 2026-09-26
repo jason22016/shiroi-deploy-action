@@ -46,3 +46,126 @@ jobs:
             readlink -f "$HOME/shiro/server.js"
             node --version
             pm2 jlist | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{for(const p of JSON.parse(s)){if(p.name==="shiro")console.log(JSON.stringify({name:p.name,script:p.pm2_env.pm_exec_path,cwd:p.pm2_env.pm_cwd,status:p.pm2_env.status,node:p.pm2_env.node_version}))}})'
+
+  build-and-deploy:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: jason22016/mx-admin
+          ref: de056ec39441cb3ff7adcb4b6c333f2d02c338bf
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source-admin
+      - uses: actions/checkout@v4
+        with:
+          repository: jason22016/mx-space-core
+          ref: 9634eac3c618545b45d084b73c40f97ec4c5eee6
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source-core
+          lfs: true
+      - uses: actions/checkout@v4
+        with:
+          repository: jason22016/shiroi
+          ref: 6047be878d039a93d750037ea5b46c73e97b32e5
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source-shiroi
+          lfs: true
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - name: Build original Admin 6.1.5
+        working-directory: source-admin
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./package.json").version')" = 6.1.5
+          pnpm install --frozen-lockfile
+          pnpm build
+          git diff --exit-code
+          mkdir -p ../payload
+          tar -C dist -czf ../payload/admin.tar.gz .
+      - name: Build original Core using the production runtime base
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./source-core/apps/core/package.json").version')" = 10.1.9
+          docker build -f verification/core-build.Dockerfile -t verification-core-builder source-core
+          container=$(docker create verification-core-builder)
+          docker cp "$container:/verify/source/apps/core/out" payload/core
+          docker rm "$container"
+          tar -C payload/core -czf payload/core.tar.gz .
+          rm -rf payload/core
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - name: Build original Shiroi 6.6.7
+        working-directory: source-shiroi
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./apps/web/package.json").version')" = 6.6.7
+          # Preserve the public commit link embedded in the existing site.
+          git remote set-url origin https://github.com/innei-dev/shiroi.git
+          pnpm install --frozen-lockfile
+          # Same build-only workaround as the existing production workflow.
+          pnpm --filter shiro-types add -D @tailwindcss/cli@4.2.1
+          pnpm exec turbo build
+          git diff --exit-code -- apps/web/src
+          cd apps/web/.next
+          rm -rf cache
+          cp -r ../public ./standalone/apps/web/public
+          mv static ./standalone/apps/web/.next/static
+          echo ';process.title = "Shiro (NextJS)"' >> ./standalone/apps/web/server.js
+          tar -czf "$GITHUB_WORKSPACE/payload/shiroi.tar.gz" ./*
+      - name: Record source and artifact checksums
+        run: |
+          set -euo pipefail
+          cp verification/deploy-current.sh verification/content-fingerprint.js payload/
+          cat > payload/source-manifest.json <<'JSON'
+          {"shiroi":{"version":"6.6.7","commit":"6047be878d039a93d750037ea5b46c73e97b32e5"},"core":{"version":"10.1.9","commit":"9634eac3c618545b45d084b73c40f97ec4c5eee6"},"admin":{"version":"6.1.5","commit":"de056ec39441cb3ff7adcb4b6c333f2d02c338bf"}}
+          JSON
+          cd payload
+          sha256sum *.tar.gz source-manifest.json deploy-current.sh content-fingerprint.js > SHA256SUMS
+      - name: Prepare private staging directory
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          script: |
+            umask 077
+            mkdir -p /tmp/site-verification-${{ github.run_id }}
+            chmod 700 /tmp/site-verification-${{ github.run_id }}
+      - name: Upload private artifacts directly to the existing server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          source: payload/*
+          target: /tmp/site-verification-${{ github.run_id }}
+          strip_components: 1
+          timeout: 120s
+          command_timeout: 15m
+      - name: Deploy the same versions and verify rollback-protected health
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          command_timeout: 15m
+          script: |
+            set -eu
+            bash /tmp/site-verification-${{ github.run_id }}/deploy-current.sh '${{ github.run_id }}'
