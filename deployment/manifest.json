@@ -5,7 +5,7 @@
   },
   "core": {
     "version": "10.1.10",
-    "commit": "9d030d2a85398d2c1297acde50dbf36c575cf59c"
+    "commit": "3ed462277e0124cc16c3fbdce62b4d73f939943b"
   },
   "admin": {
     "version": "6.1.6",
