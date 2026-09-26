@@ -46,6 +46,17 @@ jobs:
             readlink -f "$HOME/shiro/server.js"
             node --version
             pm2 jlist | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{for(const p of JSON.parse(s)){if(p.name==="shiro")console.log(JSON.stringify({name:p.name,script:p.pm2_env.pm_exec_path,cwd:p.pm2_env.pm_cwd,status:p.pm2_env.status,node:p.pm2_env.node_version}))}})'
+            # Diagnose the previous verification without exposing environment values.
+            python3 - <<'PY'
+            import json, pathlib
+            p=pathlib.Path.home()/'site-verification/36262119638'
+            if (p/'core-after.json').exists():
+                before=json.loads((p/'core-before.json').read_text())[0]['Config']['Env']
+                after=json.loads((p/'core-after.json').read_text())[0]['Config']['Env']
+                values=lambda items: dict(item.split('=',1) for item in items)
+                print('previous_environment_values_unchanged=', values(before)==values(after))
+                print('previous_environment_order_changed=', before!=after)
+            PY
 
   build-and-deploy:
     needs: preflight

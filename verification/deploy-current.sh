@@ -147,7 +147,9 @@ docker inspect mx-server > "$state/core-after.json"
 python3 - "$state" <<'PY'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1]); before=json.loads((p/'core-before.json').read_text())[0]; after=json.loads((p/'core-after.json').read_text())[0]
-for key in ['Env','Entrypoint','Cmd','User','WorkingDir']:
+env=lambda obj: dict(item.split('=',1) for item in obj['Config'].get('Env') or [])
+assert env(before)==env(after), 'Runtime environment values changed'
+for key in ['Entrypoint','Cmd','User','WorkingDir']:
     assert before['Config'].get(key)==after['Config'].get(key), 'Runtime setting changed: '+key
 mounts=lambda obj: sorted((m['Source'],m['Destination'],m['RW']) for m in obj['Mounts'])
 assert mounts(before)==mounts(after), 'Mounts changed'
