@@ -72,7 +72,7 @@ chmod 700 "$backup/rollback.sh"
 python3 - "$backup" <<'PY'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1]);before=json.loads((p/'core-before.json').read_text())[0]
-env=dict(x.split('=',1) for x in before['Config'].get('Env',[]));env['MX_ADMIN_DEPLOY_MANAGED']=env.get('MX_ADMIN_DEPLOY_MANAGED')
+env={k:v.replace('$','$$') for k,v in (x.split('=',1) for x in before['Config'].get('Env',[]))};env['MX_ADMIN_DEPLOY_MANAGED']=env.get('MX_ADMIN_DEPLOY_MANAGED')
 (p/'compose.rollback.yml').write_text(json.dumps({'services':{'app':{'image':(p/'snapshot-image').read_text().strip(),'environment':env}}}))
 PY
 # Confirm Docker can start the snapshot independently and read exactly the old Admin files.

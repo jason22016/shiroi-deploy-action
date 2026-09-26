@@ -12,6 +12,10 @@ on:
         description: Unique deployment request identifier
         required: true
         type: string
+      backup_id:
+        description: Successful preflight backup run to preserve and restore
+        required: true
+        type: string
       check_only:
         description: Validate the manifest without building or changing the server
         type: boolean
@@ -38,8 +42,10 @@ jobs:
         env:
           RELEASE_SHA: ${{ inputs.release_sha }}
           REQUEST_ID: ${{ inputs.request_id }}
+          BACKUP_ID: ${{ inputs.backup_id }}
         run: |
           [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$BACKUP_ID" =~ ^[0-9]+$ ]]
           [[ "$REQUEST_ID" =~ ^[a-zA-Z0-9-]{1,80}$ ]]
       - uses: actions/checkout@v4
         with:
@@ -88,15 +94,6 @@ jobs:
           persist-credentials: false
           path: source-core
           lfs: true
-      - uses: actions/checkout@v4
-        with:
-          repository: jason22016/shiroi
-          ref: ${{ needs.resolve.outputs.shiroi_sha }}
-          token: ${{ secrets.GH_PAT }}
-          persist-credentials: false
-          path: source-shiroi
-          lfs: true
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -124,27 +121,6 @@ jobs:
           docker rm "$container"
           tar -C payload/core -czf payload/core.tar.gz .
           rm -rf payload/core
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.27.0
-      - name: Build selected private Shiroi
-        working-directory: source-shiroi
-        run: |
-          set -euo pipefail
-          test "$(node -p 'require("./apps/web/package.json").version')" = "$EXPECTED_SHIROI_VERSION"
-          # Preserve the public commit link embedded in the existing site.
-          git remote set-url origin https://github.com/innei-dev/shiroi.git
-          pnpm install --frozen-lockfile
-          # Same build-only workaround as the existing production workflow.
-          pnpm --filter shiro-types add -D @tailwindcss/cli@4.2.1
-          pnpm exec turbo build
-          git diff --exit-code -- apps/web/src
-          cd apps/web/.next
-          rm -rf cache
-          cp -r ../public ./standalone/apps/web/public
-          mv static ./standalone/apps/web/.next/static
-          echo ';process.title = "Shiro (NextJS)"' >> ./standalone/apps/web/server.js
-          tar -czf "$GITHUB_WORKSPACE/payload/shiroi.tar.gz" ./*
       - name: Record source and artifact checksums
         run: |
           set -euo pipefail
@@ -168,7 +144,7 @@ jobs:
             umask 077
             python3 - <<'PYTOKEN'
             import os,pathlib
-            p=pathlib.Path.home()/'mx-space/core/data/mx-space/site-deployment'
+            p=pathlib.Path('/tmp/site-deployment-${{ github.run_id }}')
             p.mkdir(mode=0o700,parents=True,exist_ok=True)
             token=os.environ['DEPLOY_TOKEN'].strip()
             if not token: raise SystemExit('Missing deployment credential')
@@ -199,4 +175,4 @@ jobs:
           command_timeout: 15m
           script: |
             set -eu
-            bash /tmp/site-deployment-${{ github.run_id }}/deploy.sh '${{ github.run_id }}'
+            bash /tmp/site-deployment-${{ github.run_id }}/deploy.sh '${{ github.run_id }}' '${{ inputs.backup_id }}'

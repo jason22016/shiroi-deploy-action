@@ -4,8 +4,10 @@ umask 077
 backup=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 compose_dir=$HOME/mx-space/core
 record_dir=$compose_dir/data/mx-space/site-deployment
-exec 9>"$HOME/site-update-backups/operation.lock"
-flock -w 120 9
+if test "${MX_UPDATE_LOCK_HELD:-0}" != 1; then
+  exec 9>"$HOME/site-update-backups/operation.lock"
+  flock -w 120 9
+fi
 snapshot=$(cat "$backup/snapshot-image")
 if ! docker image inspect "$snapshot" >/dev/null 2>&1; then
   gzip -dc "$backup/core-snapshot.tar.gz" | docker load >/dev/null
