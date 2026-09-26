@@ -24,6 +24,9 @@ test -f "$compose_dir/docker-compose.yml"
 test -f "$shiro_dir/.env"
 test -f "$shiro_dir/ecosystem.config.js"
 test -f "$shiro_dir/server.js"
+# Match the existing production deployment environment for PM2 and image handling.
+export NEXT_SHARP_PATH="$(npm root -g)/sharp"
+test -d "$NEXT_SHARP_PATH"
 old_shiro=$(readlink -f "$shiro_dir/server.js")
 printf '%s\n' "$old_shiro" > "$state/old-shiro-entry"
 docker inspect mx-server > "$state/core-before.json"
