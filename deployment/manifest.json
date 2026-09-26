@@ -1,0 +1,14 @@
+{
+  "shiroi": {
+    "version": "6.6.7",
+    "commit": "6047be878d039a93d750037ea5b46c73e97b32e5"
+  },
+  "core": {
+    "version": "10.1.10",
+    "commit": "9d030d2a85398d2c1297acde50dbf36c575cf59c"
+  },
+  "admin": {
+    "version": "6.1.6",
+    "commit": "ff01cabb5ff6e7a2435ce4a5a709a462a3074698"
+  }
+}

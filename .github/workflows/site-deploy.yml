@@ -1,0 +1,211 @@
+name: Private site deployment
+run-name: Site deployment ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Deployment repository commit containing the reviewed release manifest
+        required: true
+        type: string
+      request_id:
+        description: Unique deployment request identifier
+        required: true
+        type: string
+      check_only:
+        description: Validate the manifest without building or changing the server
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+concurrency:
+  group: ${{ inputs.check_only && 'site-validation' || 'site-production' }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      core_sha: ${{ steps.manifest.outputs.core_sha }}
+      admin_sha: ${{ steps.manifest.outputs.admin_sha }}
+      shiroi_sha: ${{ steps.manifest.outputs.shiroi_sha }}
+      core_version: ${{ steps.manifest.outputs.core_version }}
+      admin_version: ${{ steps.manifest.outputs.admin_version }}
+      shiroi_version: ${{ steps.manifest.outputs.shiroi_version }}
+    steps:
+      - name: Validate request
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$REQUEST_ID" =~ ^[a-zA-Z0-9-]{1,80}$ ]]
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          persist-credentials: false
+      - name: Resolve the selected private source commits
+        id: manifest
+        run: |
+          python3 - <<'PYMANIFEST'
+          import json,os,re
+          data=json.load(open('deployment/manifest.json'))
+          assert set(data)=={'core','admin','shiroi'}
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+            for name,item in data.items():
+              assert re.fullmatch('[a-f0-9]{40}',item['commit'])
+              assert re.fullmatch(r'\d+\.\d+\.\d+',item['version'])
+              output.write(f"{name}_sha={item['commit']}\n{name}_version={item['version']}\n")
+          PYMANIFEST
+
+  build-and-deploy:
+    needs: resolve
+    if: ${{ !inputs.check_only }}
+    env:
+      EXPECTED_ADMIN_VERSION: ${{ needs.resolve.outputs.admin_version }}
+      EXPECTED_CORE_VERSION: ${{ needs.resolve.outputs.core_version }}
+      EXPECTED_SHIROI_VERSION: ${{ needs.resolve.outputs.shiroi_version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release_sha }}
+      - name: Verify deployment credential can dispatch this workflow
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          python3 - <<'PYCHECK'
+          import json,os,uuid
+          json.dump({'ref':'main','inputs':{'release_sha':os.environ['RELEASE_SHA'],'request_id':'credential-check-'+str(uuid.uuid4()),'check_only':True}},open('/tmp/deployment-permission-check.json','w'))
+          PYCHECK
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/site-deploy.yml/dispatches" --input /tmp/deployment-permission-check.json
+      - uses: actions/checkout@v4
+        with:
+          repository: jason22016/mx-admin
+          ref: ${{ needs.resolve.outputs.admin_sha }}
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source-admin
+      - uses: actions/checkout@v4
+        with:
+          repository: jason22016/mx-space-core
+          ref: ${{ needs.resolve.outputs.core_sha }}
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source-core
+          lfs: true
+      - uses: actions/checkout@v4
+        with:
+          repository: jason22016/shiroi
+          ref: ${{ needs.resolve.outputs.shiroi_sha }}
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source-shiroi
+          lfs: true
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - name: Build selected private Admin
+        working-directory: source-admin
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./package.json").version')" = "$EXPECTED_ADMIN_VERSION"
+          pnpm install --frozen-lockfile
+          pnpm build
+          git diff --exit-code
+          mkdir -p ../payload
+          tar -C dist -czf ../payload/admin.tar.gz .
+      - name: Build selected private Core
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./source-core/apps/core/package.json").version')" = "$EXPECTED_CORE_VERSION"
+          docker build -f deployment/core-build.Dockerfile -t verification-core-builder source-core
+          container=$(docker create verification-core-builder)
+          docker cp "$container:/verify/source/apps/core/out" payload/core
+          docker rm "$container"
+          tar -C payload/core -czf payload/core.tar.gz .
+          rm -rf payload/core
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - name: Build selected private Shiroi
+        working-directory: source-shiroi
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./apps/web/package.json").version')" = "$EXPECTED_SHIROI_VERSION"
+          # Preserve the public commit link embedded in the existing site.
+          git remote set-url origin https://github.com/innei-dev/shiroi.git
+          pnpm install --frozen-lockfile
+          # Same build-only workaround as the existing production workflow.
+          pnpm --filter shiro-types add -D @tailwindcss/cli@4.2.1
+          pnpm exec turbo build
+          git diff --exit-code -- apps/web/src
+          cd apps/web/.next
+          rm -rf cache
+          cp -r ../public ./standalone/apps/web/public
+          mv static ./standalone/apps/web/.next/static
+          echo ';process.title = "Shiro (NextJS)"' >> ./standalone/apps/web/server.js
+          tar -czf "$GITHUB_WORKSPACE/payload/shiroi.tar.gz" ./*
+      - name: Record source and artifact checksums
+        run: |
+          set -euo pipefail
+          cp deployment/deploy.sh deployment/content-fingerprint.js payload/
+          cp deployment/manifest.json payload/source-manifest.json
+          git rev-parse HEAD > payload/release-sha
+          cd payload
+          sha256sum *.tar.gz source-manifest.json release-sha deploy.sh content-fingerprint.js > SHA256SUMS
+      - name: Prepare private staging directory
+        env:
+          DEPLOY_TOKEN: ${{ secrets.GH_PAT }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          envs: DEPLOY_TOKEN
+          script: |
+            set -eu
+            umask 077
+            python3 - <<'PYTOKEN'
+            import os,pathlib
+            p=pathlib.Path.home()/'mx-space/core/data/mx-space/site-deployment'
+            p.mkdir(mode=0o700,parents=True,exist_ok=True)
+            token=os.environ['DEPLOY_TOKEN'].strip()
+            if not token: raise SystemExit('Missing deployment credential')
+            target=p/'github-token.tmp'
+            target.write_text(token);os.chmod(target,0o600);os.replace(target,p/'github-token')
+            PYTOKEN
+            mkdir -p /tmp/site-deployment-${{ github.run_id }}
+            chmod 700 /tmp/site-deployment-${{ github.run_id }}
+      - name: Upload private artifacts directly to the existing server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          source: payload/*
+          target: /tmp/site-deployment-${{ github.run_id }}
+          strip_components: 1
+          timeout: 120s
+          command_timeout: 15m
+      - name: Deploy selected release and verify health
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          command_timeout: 15m
+          script: |
+            set -eu
+            bash /tmp/site-deployment-${{ github.run_id }}/deploy.sh '${{ github.run_id }}'
