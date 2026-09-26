@@ -72,7 +72,7 @@ services:
   app:
     image: jason-core-verification:$run_id
     environment:
-      MX_ADMIN_DEPLOY_MANAGED: 'true'
+      MX_ADMIN_DEPLOY_MANAGED: 'false'
 EOF
 python3 - "$state" "$run_id" <<'PYROLLBACK'
 import json,pathlib,sys
@@ -93,7 +93,7 @@ env=lambda values: dict(item.split('=',1) for item in values or [])
 expected=env(image['Config'].get('Env'))
 expected.update({k:str(v) for k,v in plan.get('environment',{}).items() if v is not None})
 old_env=env(old['Config'].get('Env'))
-old_env['MX_ADMIN_DEPLOY_MANAGED']='true'
+old_env['MX_ADMIN_DEPLOY_MANAGED']='false'
 if expected != old_env:
     raise SystemExit('ABORT: disk Compose environment differs from running Core; values were not printed')
 PY
@@ -161,7 +161,7 @@ python3 - "$state" <<'PY'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1]); before=json.loads((p/'core-before.json').read_text())[0]; after=json.loads((p/'core-after.json').read_text())[0]
 env=lambda obj: dict(item.split('=',1) for item in obj['Config'].get('Env') or [])
-expected_env=env(before); expected_env['MX_ADMIN_DEPLOY_MANAGED']='true'
+expected_env=env(before); expected_env['MX_ADMIN_DEPLOY_MANAGED']='false'
 assert expected_env==env(after), 'Runtime environment values changed'
 for key in ['Entrypoint','Cmd','User','WorkingDir']:
     assert before['Config'].get(key)==after['Config'].get(key), 'Runtime setting changed: '+key

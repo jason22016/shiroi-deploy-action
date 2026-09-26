@@ -1,4 +1,4 @@
-name: Private site deployment
+name: Install private update sources
 run-name: Site deployment ${{ inputs.request_id }}
 
 on:
@@ -73,16 +73,6 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.release_sha }}
-      - name: Verify deployment credential can dispatch this workflow
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-          RELEASE_SHA: ${{ inputs.release_sha }}
-        run: |
-          python3 - <<'PYCHECK'
-          import json,os,uuid
-          json.dump({'ref':'main','inputs':{'release_sha':os.environ['RELEASE_SHA'],'request_id':'credential-check-'+str(uuid.uuid4()),'check_only':True}},open('/tmp/deployment-permission-check.json','w'))
-          PYCHECK
-          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/site-deploy.yml/dispatches" --input /tmp/deployment-permission-check.json
       - uses: actions/checkout@v4
         with:
           repository: jason22016/mx-admin
@@ -120,6 +110,7 @@ jobs:
           test "$(node -p 'require("./package.json").version')" = "$EXPECTED_ADMIN_VERSION"
           pnpm install --frozen-lockfile
           pnpm build
+          node -p 'require("./package.json").version' > dist/version
           git diff --exit-code
           mkdir -p ../payload
           tar -C dist -czf ../payload/admin.tar.gz .

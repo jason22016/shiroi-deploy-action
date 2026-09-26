@@ -5,10 +5,10 @@
   },
   "core": {
     "version": "10.1.10",
-    "commit": "3ed462277e0124cc16c3fbdce62b4d73f939943b"
+    "commit": "df67837233a32951a9c9d12d79f2ad20d2df8e73"
   },
   "admin": {
     "version": "6.1.6",
-    "commit": "ff01cabb5ff6e7a2435ce4a5a709a462a3074698"
+    "commit": "246e750bfeb54876b7518b34b7cd78315ac5cc9b"
   }
 }
