@@ -1,0 +1,48 @@
+name: Verify current private-source deployment
+
+on:
+  push:
+    branches: [codex/verify-current-deployment]
+    paths: ['.github/workflows/verify-current.yml', 'verification/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-current-production
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify access to the unchanged private source commits
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          gh api repos/jason22016/shiroi/commits/6047be878d039a93d750037ea5b46c73e97b32e5 --jq '.sha'
+          gh api repos/jason22016/mx-space-core/commits/9634eac3c618545b45d084b73c40f97ec4c5eee6 --jq '.sha'
+          gh api repos/jason22016/mx-admin/commits/de056ec39441cb3ff7adcb4b6c333f2d02c338bf --jq '.sha'
+      - name: Read production versions and deployment locations
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          command_timeout: 2m
+          script: |
+            set -eu
+            docker inspect mx-server --format 'image_id={{.Image}} working_dir={{.Config.WorkingDir}}'
+            docker image inspect "$(docker inspect mx-server --format '{{.Image}}')" --format 'digests={{json .RepoDigests}} revision={{index .Config.Labels "org.opencontainers.image.revision"}} version={{index .Config.Labels "org.opencontainers.image.version"}}'
+            docker inspect mx-server --format 'compose_files={{index .Config.Labels "com.docker.compose.project.config_files"}} service={{index .Config.Labels "com.docker.compose.service"}}'
+            docker inspect mx-server --format '{{range .Mounts}}mount={{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            docker exec mx-server node --version
+            docker exec mx-server sh -c 'if test -f /app/admin/version; then cat /app/admin/version; else echo admin_version_file_absent; fi'
+            curl -fsS http://127.0.0.1:2333/api/v2
+            printf '\n'
+            readlink -f "$HOME/shiro/server.js"
+            node --version
+            pm2 jlist | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{for(const p of JSON.parse(s)){if(p.name==="shiro")console.log(JSON.stringify({name:p.name,script:p.pm2_env.pm_exec_path,cwd:p.pm2_env.pm_cwd,status:p.pm2_env.status,node:p.pm2_env.node_version}))}})'
